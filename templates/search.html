@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tìm kiếm | Hệ thống tra cứu</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Sửa lỗi border khi cuộn ngang cho cột ghim (sticky) */
+        .sticky-col {
+            box-shadow: -4px 0 6px -1px rgba(0, 0, 0, 0.05);
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans min-h-screen">
+
+    <nav class="bg-white shadow-sm border-b">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <div class="font-bold text-xl text-blue-600">Hệ Thống Tra Cứu</div>
+                <div class="space-x-4">
+                    {% if current_user.role == 'admin' %}
+                        <a href="{{ url_for('upload_file') }}" class="text-gray-600 hover:text-blue-600 font-medium transition">Upload file</a>
+                        <a href="{{ url_for('manage_users') }}" class="text-gray-600 hover:text-blue-600 font-medium transition">Quản lý User</a>
+                    {% endif %}
+                    <a href="{{ url_for('logout') }}" class="text-red-500 hover:text-red-700 font-medium transition">Đăng xuất</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto mt-8 px-4 pb-20">
+        
+        <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-8">
+            <form method="POST" class="flex flex-col md:flex-row gap-4 items-end">
+                <div class="flex-1 w-full">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Chọn file dữ liệu</label>
+                    <select name="file" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                        <option value="" disabled selected>-- Chọn file --</option>
+                        {% for file in files %}
+                            <option value="{{ file }}" {% if file == selected_file %}selected{% endif %}>{{ file }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="flex-2 w-full md:w-1/2">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Nhập từ khóa cần tìm</label>
+                    <input type="text" name="query" value="{{ query }}" required placeholder="Ví dụ: tên, mã số..."
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                
+                <button type="submit" class="w-full md:w-auto px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow transition">
+                    Tìm kiếm
+                </button>
+            </form>
+        </div>
+
+        {% if query %}
+            <div class="mb-6">
+                <h3 class="text-xl font-bold text-gray-800">Kết quả tìm kiếm cho: <span class="text-blue-600">"{{ query }}"</span></h3>
+            </div>
+
+            {% if results %}
+                {% for sheet, rows in results.items() %}
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-100 mb-8 overflow-hidden">
+                        <div class="bg-blue-50 px-6 py-4 border-b border-gray-200">
+                            <h4 class="font-bold text-blue-800">Dữ liệu tại Sheet (Đã lọc): {{ sheet }}</h4>
+                        </div>
+                        <div class="overflow-x-auto relative">
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        {% for key in rows[0].keys() %}
+                                            <th scope="col" class="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider whitespace-nowrap">
+                                                {{ key }}
+                                            </th>
+                                        {% endfor %}
+                                        <th scope="col" class="sticky right-0 z-10 bg-gray-100 border-l border-gray-200 sticky-col px-6 py-3 text-center text-xs font-bold text-gray-600 uppercase tracking-wider whitespace-nowrap">
+                                            Thao tác
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody class="bg-white divide-y divide-gray-200">
+                                    {% for row in rows %}
+                                        <tr class="hover:bg-gray-50 transition-colors group">
+                                            {% for value in row.values() %}
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{{ value }}</td>
+                                            {% endfor %}
+                                            <td class="sticky right-0 z-10 bg-white group-hover:bg-gray-50 border-l border-gray-200 sticky-col px-6 py-4 whitespace-nowrap text-center text-sm font-medium transition-colors">
+                                                <button onclick="showDetails(this)" data-row="{{ row | tojson | forceescape }}" 
+                                                        class="text-blue-600 hover:text-white hover:bg-blue-600 border border-blue-600 px-3 py-1.5 rounded-md transition duration-200">
+                                                    Xem chi tiết
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded mb-8">
+                    <p class="text-yellow-700 font-medium">Không tìm thấy dữ liệu phù hợp với từ khóa trong các sheet hợp lệ.</p>
+                </div>
+            {% endif %}
+        {% endif %}
+
+        {% if display_only_data %}
+            <div class="mb-6 mt-12 border-t pt-8 border-gray-200">
+                <h3 class="text-xl font-bold text-gray-800">📌 Các Sheet hiển thị toàn bộ <span class="text-gray-500 text-sm font-normal">(Không áp dụng lọc tìm kiếm)</span></h3>
+            </div>
+
+            {% for sheet, rows in display_only_data.items() %}
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 mb-8 overflow-hidden">
+                    <div class="bg-gray-100 px-6 py-4 border-b border-gray-200">
+                        <h4 class="font-bold text-gray-700">Dữ liệu gốc tại Sheet: {{ sheet }}</h4>
+                    </div>
+                    
+                    <div class="overflow-x-auto relative max-h-[500px]"> <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50 sticky top-0 z-20"> <tr>
+                                    {% for key in rows[0].keys() %}
+                                        <th scope="col" class="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider whitespace-nowrap bg-gray-50">
+                                            {{ key }}
+                                        </th>
+                                    {% endfor %}
+                                    <th scope="col" class="sticky right-0 z-30 bg-gray-100 border-l border-gray-200 sticky-col px-6 py-3 text-center text-xs font-bold text-gray-600 uppercase tracking-wider whitespace-nowrap">
+                                        Thao tác
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                {% for row in rows %}
+                                    <tr class="hover:bg-gray-50 transition-colors group">
+                                        {% for value in row.values() %}
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{{ value }}</td>
+                                        {% endfor %}
+                                        <td class="sticky right-0 z-10 bg-white group-hover:bg-gray-50 border-l border-gray-200 sticky-col px-6 py-4 whitespace-nowrap text-center text-sm font-medium transition-colors">
+                                            <button onclick="showDetails(this)" data-row="{{ row | tojson | forceescape }}" 
+                                                    class="text-gray-600 hover:text-white hover:bg-gray-600 border border-gray-600 px-3 py-1.5 rounded-md transition duration-200">
+                                                Xem chi tiết
+                                            </button>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            {% endfor %}
+        {% endif %}
+
+    </div>
+
+    <div id="detailsModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50 transition-opacity duration-300">
+        <div class="relative top-20 mx-auto p-5 border w-11/12 md:w-2/3 lg:w-1/2 shadow-2xl rounded-xl bg-white">
+            <div class="mt-2">
+                <div class="flex justify-between items-center border-b pb-3">
+                    <h3 class="text-xl font-bold text-gray-900">Chi tiết dữ liệu dòng</h3>
+                    <button onclick="closeModal()" class="text-gray-400 hover:text-red-500 text-2xl font-bold">&times;</button>
+                </div>
+                
+                <div id="modalContent" class="mt-4 text-left text-sm max-h-[60vh] overflow-y-auto pr-2 space-y-3">
+                    </div>
+                
+                <div class="items-center mt-6 border-t pt-4 text-right">
+                    <button onclick="closeModal()" class="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 focus:outline-none transition">
+                        Đóng cửa sổ
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function showDetails(btn) {
+            const rowData = JSON.parse(btn.getAttribute('data-row'));
+            const modalContent = document.getElementById('modalContent');
+            
+            modalContent.innerHTML = '';
+            
+            for (const [key, value] of Object.entries(rowData)) {
+                modalContent.innerHTML += `
+                    <div class="bg-gray-50 rounded-lg p-3 flex flex-col md:flex-row md:items-start border border-gray-100">
+                        <span class="font-bold text-gray-700 md:w-1/3 shrink-0">${key}:</span>
+                        <span class="text-gray-900 md:w-2/3 break-words mt-1 md:mt-0">${value}</span>
+                    </div>`;
+            }
+            
+            document.getElementById('detailsModal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('detailsModal').classList.add('hidden');
+        }
+    </script>
+
+</body>
+</html>

@@ -226,4 +226,4 @@ if __name__ == '__main__':
         db.create_all()
         create_admin()
     init_cache()
-    app.run(debug=True)
+    app.run(debug=True, host='0.0.0.0', port=5000, threaded=True)  # Enable threaded mode for handling multiple requests

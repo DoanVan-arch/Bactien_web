@@ -189,37 +189,79 @@ def search():
     results = {}
     query = ""
     selected_file = ""
-    display_only_data = {} # Thay đổi: Dùng Dict để chứa toàn bộ dữ liệu thay vì chỉ lấy tên
+    display_only_data = {}
 
     if request.method == 'POST':
-        query = request.form.get('query').strip()
-        selected_file = request.form.get('file')
+        query = request.form.get('query', '').strip()
+        
+        # NẾU LÀ ADMIN: Cho phép chọn file cụ thể hoặc tìm tất cả. NẾU LÀ USER: Ép buộc tìm tất cả file.
+        if current_user.role == 'admin':
+            selected_file = request.form.get('file', '')
+        else:
+            selected_file = '' # Trống nghĩa là tìm trên tất cả các file
 
-        if query and selected_file and selected_file in DATA_CACHE:
+        if query:
+            # Xác định danh sách các file cần quét dữ liệu
+            if selected_file and selected_file in DATA_CACHE:
+                files_to_scan = [selected_file]
+            else:
+                files_to_scan = list(DATA_CACHE.keys())
+            
             try:
-                xls_data = DATA_CACHE[selected_file]
-                
-                for sheet_name, df in xls_data.items():
-                    if re.search(r'\d{4}\s*-\s*\d{4}', str(sheet_name)):
-                        # XỬ LÝ TÌM KIẾM cho các sheet đúng định dạng năm
-                        mask = df.apply(lambda row: row.astype(str).str.contains(query, case=False).any(), axis=1)
-                        matches = df[mask]
-                        if not matches.empty:
-                            results[sheet_name] = matches.to_dict('records')
-                    else:
-                        # CHỈ HIỂN THỊ: Lấy toàn bộ dữ liệu của sheet (không lọc)
-                        if not df.empty:
-                            display_only_data[sheet_name] = df.to_dict('records')
+                for file_name in files_to_scan:
+                    xls_data = DATA_CACHE.get(file_name, {})
+                    
+                    for sheet_name, df in xls_data.items():
+                        # Kiểm tra xem sheet có chứa định dạng năm (Ví dụ: 2024-2026) hay không
+                        if re.search(r'\d{4}\s*-\s*\d{4}', str(sheet_name)):
                             
+                            # --- LOGIC TÌM KIẾM NÂNG CAO (XỬ LÝ * VÀ |) ---
+                            # Chuyển toàn bộ dòng thành một chuỗi văn bản viết thường để quét nhanh
+                            row_strings = df.astype(str).apply(lambda x: ' '.join(x), axis=1).str.lower()
+                            
+                            # Tách theo dấu toán tử OR (|) trước
+                            or_groups = query.lower().split('|')
+                            final_mask = pd.Series(False, index=df.index)
+                            
+                            for group in or_groups:
+                                if not group.strip():
+                                    continue
+                                # Tách theo dấu toán tử AND (*) bên trong nhóm OR
+                                and_tokens = group.split('*')
+                                group_mask = pd.Series(True, index=df.index)
+                                
+                                for token in and_tokens:
+                                    token = token.strip()
+                                    if token:
+                                        group_mask = group_mask & row_strings.str.contains(token, regex=False)
+                                
+                                # Gộp kết quả các nhóm bằng toán tử OR
+                                final_mask = final_mask | group_mask
+                            
+                            matches = df[final_mask]
+                            if not matches.empty:
+                                # Gộp kết quả theo Tên Sheet (Ẩn hoàn toàn tên file đối với người dùng)
+                                if sheet_name in results:
+                                    results[sheet_name].extend(matches.to_dict('records'))
+                                else:
+                                    results[sheet_name] = matches.to_dict('records')
+                        else:
+                            # ĐỐI VỚI CÁC SHEET CHỈ HIỂN THỊ: Gộp toàn bộ dữ liệu gốc ra ngoài
+                            if not df.empty:
+                                if sheet_name in display_only_data:
+                                    display_only_data[sheet_name].extend(df.to_dict('records'))
+                                else:
+                                    display_only_data[sheet_name] = df.to_dict('records')
+                                    
             except Exception as e:
-                flash(f'Lỗi khi xử lý dữ liệu: {str(e)}')
+                flash(f'Lỗi khi xử lý dữ liệu tìm kiếm: {str(e)}')
 
     return render_template('search.html', 
                            files=files, 
                            results=results, 
                            query=query, 
                            selected_file=selected_file,
-                           display_only_data=display_only_data) # Truyền dữ liệu ra HTML
+                           display_only_data=display_only_data)
 
 if __name__ == '__main__':
     with app.app_context():

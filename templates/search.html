@@ -6,7 +6,6 @@
     <title>Tìm kiếm | Hệ thống tra cứu</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* Sửa lỗi border khi cuộn ngang cho cột ghim (sticky) */
         .sticky-col {
             box-shadow: -4px 0 6px -1px rgba(0, 0, 0, 0.05);
         }
@@ -33,19 +32,23 @@
         
         <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-8">
             <form method="POST" class="flex flex-col md:flex-row gap-4 items-end">
-                <div class="flex-1 w-full">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Chọn file dữ liệu</label>
-                    <select name="file" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white">
-                        <option value="" disabled selected>-- Chọn file --</option>
+                
+                {% if current_user.role == 'admin' %}
+                <div class="flex-1 w-full md:w-1/4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Chọn file dữ liệu (Chỉ Admin thấy)</label>
+                    <select name="file" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                        <option value="">-- Tất cả các file --</option>
                         {% for file in files %}
                             <option value="{{ file }}" {% if file == selected_file %}selected{% endif %}>{{ file }}</option>
                         {% endfor %}
                     </select>
                 </div>
+                {% endif %}
                 
-                <div class="flex-2 w-full md:w-1/2">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Nhập từ khóa cần tìm</label>
-                    <input type="text" name="query" value="{{ query }}" required placeholder="Ví dụ: tên, mã số..."
+                <div class="flex-1 w-full">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Nhập từ khóa tìm kiếm nâng cao (*: AND, |: OR)</label>
+                    <input type="text" name="query" value="{{ query }}" required 
+                           placeholder="Ví dụ: LM339*dán*3.9mm hoặc từ khóa1|từ khóa2"
                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
                 </div>
                 
@@ -64,7 +67,7 @@
                 {% for sheet, rows in results.items() %}
                     <div class="bg-white rounded-xl shadow-sm border border-gray-100 mb-8 overflow-hidden">
                         <div class="bg-blue-50 px-6 py-4 border-b border-gray-200">
-                            <h4 class="font-bold text-blue-800">Dữ liệu tại Sheet (Đã lọc): {{ sheet }}</h4>
+                            <h4 class="font-bold text-blue-800">Sheet dữ liệu: {{ sheet }}</h4>
                         </div>
                         <div class="overflow-x-auto relative">
                             <table class="min-w-full divide-y divide-gray-200">
@@ -84,12 +87,25 @@
                                     {% for row in rows %}
                                         <tr class="hover:bg-gray-50 transition-colors group">
                                             {% for value in row.values() %}
-                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{{ value }}</td>
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800">
+                                                    {% if value.startswith('http://') or value.startswith('https://') %}
+                                                        <a href="{{ value }}" target="_blank" class="text-blue-600 hover:underline break-all font-medium">{{ value }}</a>
+                                                    {% elif value.startswith('www.') %}
+                                                        <a href="https://{{ value }}" target="_blank" class="text-blue-600 hover:underline break-all font-medium">{{ value }}</a>
+                                                    {% else %}
+                                                        {{ value }}
+                                                    {% endif %}
+                                                </td>
                                             {% endfor %}
-                                            <td class="sticky right-0 z-10 bg-white group-hover:bg-gray-50 border-l border-gray-200 sticky-col px-6 py-4 whitespace-nowrap text-center text-sm font-medium transition-colors">
+                                            
+                                            <td class="sticky right-0 z-10 bg-white group-hover:bg-gray-50 border-l border-gray-200 sticky-col px-6 py-4 whitespace-nowrap text-center text-sm font-medium transition-colors space-x-2">
+                                                <button onclick="copyRow(this)" data-row="{{ row | tojson | forceescape }}" 
+                                                        class="text-green-600 hover:text-white hover:bg-green-600 border border-green-600 px-2.5 py-1.5 rounded-md transition duration-200 font-semibold">
+                                                    Copy
+                                                </button>
                                                 <button onclick="showDetails(this)" data-row="{{ row | tojson | forceescape }}" 
-                                                        class="text-blue-600 hover:text-white hover:bg-blue-600 border border-blue-600 px-3 py-1.5 rounded-md transition duration-200">
-                                                    Xem chi tiết
+                                                        class="text-blue-600 hover:text-white hover:bg-blue-600 border border-blue-600 px-2.5 py-1.5 rounded-md transition duration-200">
+                                                    Chi tiết
                                                 </button>
                                             </td>
                                         </tr>
@@ -101,24 +117,26 @@
                 {% endfor %}
             {% else %}
                 <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded mb-8">
-                    <p class="text-yellow-700 font-medium">Không tìm thấy dữ liệu phù hợp với từ khóa trong các sheet hợp lệ.</p>
+                    <p class="text-yellow-700 font-medium">Không tìm thấy dữ liệu phù hợp với từ khóa.</p>
                 </div>
             {% endif %}
         {% endif %}
 
         {% if display_only_data %}
             <div class="mb-6 mt-12 border-t pt-8 border-gray-200">
-                <h3 class="text-xl font-bold text-gray-800">📌 Các Sheet hiển thị toàn bộ <span class="text-gray-500 text-sm font-normal">(Không áp dụng lọc tìm kiếm)</span></h3>
+                <h3 class="text-xl font-bold text-gray-800">📌 Các thông tin xem trực tiếp <span class="text-gray-500 text-sm font-normal">(Không lọc tìm kiếm)</span></h3>
             </div>
 
             {% for sheet, rows in display_only_data.items() %}
                 <div class="bg-white rounded-xl shadow-sm border border-gray-100 mb-8 overflow-hidden">
                     <div class="bg-gray-100 px-6 py-4 border-b border-gray-200">
-                        <h4 class="font-bold text-gray-700">Dữ liệu gốc tại Sheet: {{ sheet }}</h4>
+                        <h4 class="font-bold text-gray-700">Bảng dữ liệu: {{ sheet }}</h4>
                     </div>
                     
-                    <div class="overflow-x-auto relative max-h-[500px]"> <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-gray-50 sticky top-0 z-20"> <tr>
+                    <div class="overflow-x-auto relative max-h-[400px]">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50 sticky top-0 z-20">
+                                <tr>
                                     {% for key in rows[0].keys() %}
                                         <th scope="col" class="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider whitespace-nowrap bg-gray-50">
                                             {{ key }}
@@ -133,12 +151,24 @@
                                 {% for row in rows %}
                                     <tr class="hover:bg-gray-50 transition-colors group">
                                         {% for value in row.values() %}
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{{ value }}</td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800">
+                                                {% if value.startswith('http://') or value.startswith('https://') %}
+                                                    <a href="{{ value }}" target="_blank" class="text-blue-600 hover:underline break-all font-medium">{{ value }}</a>
+                                                {% elif value.startswith('www.') %}
+                                                    <a href="https://{{ value }}" target="_blank" class="text-blue-600 hover:underline break-all font-medium">{{ value }}</a>
+                                                {% else %}
+                                                    {{ value }}
+                                                {% endif %}
+                                            </td>
                                         {% endfor %}
-                                        <td class="sticky right-0 z-10 bg-white group-hover:bg-gray-50 border-l border-gray-200 sticky-col px-6 py-4 whitespace-nowrap text-center text-sm font-medium transition-colors">
+                                        <td class="sticky right-0 z-10 bg-white group-hover:bg-gray-50 border-l border-gray-200 sticky-col px-6 py-4 whitespace-nowrap text-center text-sm font-medium transition-colors space-x-2">
+                                            <button onclick="copyRow(this)" data-row="{{ row | tojson | forceescape }}" 
+                                                    class="text-green-600 hover:text-white hover:bg-green-600 border border-green-600 px-2.5 py-1.5 rounded-md transition duration-200 font-semibold">
+                                                Copy
+                                            </button>
                                             <button onclick="showDetails(this)" data-row="{{ row | tojson | forceescape }}" 
-                                                    class="text-gray-600 hover:text-white hover:bg-gray-600 border border-gray-600 px-3 py-1.5 rounded-md transition duration-200">
-                                                Xem chi tiết
+                                                    class="text-blue-600 hover:text-white hover:bg-blue-600 border border-blue-600 px-2.5 py-1.5 rounded-md transition duration-200">
+                                                Chi tiết
                                             </button>
                                         </td>
                                     </tr>
@@ -159,34 +189,61 @@
                     <h3 class="text-xl font-bold text-gray-900">Chi tiết dữ liệu dòng</h3>
                     <button onclick="closeModal()" class="text-gray-400 hover:text-red-500 text-2xl font-bold">&times;</button>
                 </div>
-                
-                <div id="modalContent" class="mt-4 text-left text-sm max-h-[60vh] overflow-y-auto pr-2 space-y-3">
-                    </div>
-                
+                <div id="modalContent" class="mt-4 text-left text-sm max-h-[60vh] overflow-y-auto pr-2 space-y-3"></div>
                 <div class="items-center mt-6 border-t pt-4 text-right">
-                    <button onclick="closeModal()" class="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 focus:outline-none transition">
-                        Đóng cửa sổ
-                    </button>
+                    <button onclick="closeModal()" class="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 transition">Đóng cửa sổ</button>
                 </div>
             </div>
         </div>
     </div>
 
     <script>
+        // HÀM COPY DỮ LIỆU DÒNG (Định dạng dạng danh sách hàng dọc rõ ràng)
+        function copyRow(btn) {
+            const rowData = JSON.parse(btn.getAttribute('data-row'));
+            
+            // Chuyển đổi object dữ liệu thành chuỗi dạng Cột: Giá trị công khai xuống dòng
+            const textToCopy = Object.entries(rowData)
+                .map(([key, value]) => `${key}: ${value}`)
+                .join('\n');
+            
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                // Hiển thị trạng thái đổi màu nút bấm thông báo Copy Thành Công tạm thời
+                const originalText = btn.innerText;
+                btn.innerText = 'Đã Copy!';
+                btn.classList.remove('text-green-600', 'border-green-600', 'hover:bg-green-600');
+                btn.classList.add('text-white', 'bg-green-600');
+                
+                setTimeout(() => {
+                    btn.innerText = originalText;
+                    btn.classList.add('text-green-600', 'border-green-600', 'hover:bg-green-600');
+                    btn.classList.remove('text-white', 'bg-green-600');
+                }, 1200);
+            }).catch(err => {
+                alert('Không thể copy tự động, vui lòng thử lại: ' + err);
+            });
+        }
+
+        // HÀM HIỂN THỊ POPUP CHI TIẾT
         function showDetails(btn) {
             const rowData = JSON.parse(btn.getAttribute('data-row'));
             const modalContent = document.getElementById('modalContent');
-            
             modalContent.innerHTML = '';
             
             for (const [key, value] of Object.entries(rowData)) {
+                // Kiểm tra nếu giá trị là link thì nhúng thẻ a vào modal luôn
+                let valueHtml = value;
+                if (value.startsWith('http://') || value.startswith('https://') || value.startswith('www.')) {
+                    let href = value.startswith('www.') ? 'https://' + value : value;
+                    valueHtml = `<a href="${href}" target="_blank" class="text-blue-600 hover:underline break-all font-medium">${value}</a>`;
+                }
+
                 modalContent.innerHTML += `
                     <div class="bg-gray-50 rounded-lg p-3 flex flex-col md:flex-row md:items-start border border-gray-100">
                         <span class="font-bold text-gray-700 md:w-1/3 shrink-0">${key}:</span>
-                        <span class="text-gray-900 md:w-2/3 break-words mt-1 md:mt-0">${value}</span>
+                        <span class="text-gray-900 md:w-2/3 break-words mt-1 md:mt-0">${valueHtml}</span>
                     </div>`;
             }
-            
             document.getElementById('detailsModal').classList.remove('hidden');
         }
 

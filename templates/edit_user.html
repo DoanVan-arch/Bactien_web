@@ -70,12 +70,19 @@
                     </label>
                 </div>
 
-                <div id="permission_tree" class="{% if not user.column_permissions %}hidden{% endif %} bg-gray-50 p-4 border border-gray-200 rounded-lg max-h-[500px] overflow-y-auto">
+                <div id="permission_tree" class="{% if not user.column_permissions %}hidden{% endif %} bg-gray-50 p-4 border border-gray-200 rounded-lg max-h-[600px] overflow-y-auto">
                     
                     {% if not file_metadata %}
                         <p class="text-sm text-yellow-600 italic">Hệ thống hiện chưa có file dữ liệu nào. Vui lòng tải file Excel lên hệ thống trước khi cấu hình phân quyền.</p>
                     {% else %}
                         
+                        <div class="flex items-center space-x-2 mb-4 bg-blue-50 p-3 rounded border border-blue-200 shadow-sm">
+                            <input type="checkbox" id="sync_columns_toggle" checked class="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer">
+                            <label for="sync_columns_toggle" class="text-sm font-bold text-blue-800 cursor-pointer select-none">
+                                🔄 Đồng bộ chọn cột trùng tên (Tích chọn 1 cột sẽ tự động áp dụng cho tất cả các Sheet/File có cột tên tương tự)
+                            </label>
+                        </div>
+
                         <p class="text-sm text-gray-500 mb-4 bg-white p-3 border rounded shadow-sm">
                             <span class="font-bold text-red-500">Lưu ý:</span> Người dùng sẽ <strong>CHỈ THẤY</strong> những Cột, Sheet và File mà bạn <strong>TÍCH CHỌN</strong> bên dưới. Nếu một File/Sheet không có bất kỳ cột nào được tích, hệ thống sẽ tự động ẩn luôn File/Sheet đó khỏi kết quả tìm kiếm của họ.
                         </p>
@@ -133,7 +140,6 @@
     </div>
 
     <script>
-        // Hàm ẩn hiện cây thư mục phân quyền
         function togglePermTree() {
             const isEnabled = document.querySelector('input[name="enable_permissions"]:checked').value === 'yes';
             const tree = document.getElementById('permission_tree');
@@ -144,17 +150,37 @@
             }
         }
 
-        // Bắt sự kiện khi bấm nút Submit (Lưu)
+        // ==============================================================
+        // LOGIC KHỞI TẠO CHỨC NĂNG ĐỒNG BỘ CỘT TRÙNG TÊN TRÊN UI
+        // ==============================================================
+        document.querySelectorAll('.perm-checkbox').forEach(checkbox => {
+            checkbox.addEventListener('change', function() {
+                // Kiểm tra xem công tắc đồng bộ có đang BẬT không
+                const isSyncEnabled = document.getElementById('sync_columns_toggle').checked;
+                
+                if (isSyncEnabled) {
+                    const targetColumnName = this.value; // Tên của cột vừa click
+                    const isChecked = this.checked;     // Trạng thái tích (true/false)
+                    
+                    // Tìm tất cả các checkbox có thuộc tính value trùng tên cột để đồng bộ trạng thái
+                    document.querySelectorAll('.perm-checkbox').forEach(cb => {
+                        if (cb.value === targetColumnName) {
+                            cb.checked = isChecked;
+                        }
+                    });
+                }
+            });
+        });
+
+        // Xử lý gửi form lên server
         document.getElementById('configForm').addEventListener('submit', function(e) {
             const isEnabled = document.querySelector('input[name="enable_permissions"]:checked').value === 'yes';
             const hiddenInput = document.getElementById('column_permissions_input');
 
             if (isEnabled) {
-                // Quét tất cả các ô Checkbox ĐÃ ĐƯỢC TÍCH
                 const checkboxes = document.querySelectorAll('.perm-checkbox:checked');
                 const perms = {};
 
-                // Xây dựng lại Object JSON theo định dạng chuẩn
                 checkboxes.forEach(cb => {
                     const file = cb.getAttribute('data-file');
                     const sheet = cb.getAttribute('data-sheet');
@@ -166,10 +192,8 @@
                     perms[file][sheet].push(col);
                 });
 
-                // Chuyển Object thành chuỗi JSON và gán vào thẻ input ẩn
                 hiddenInput.value = JSON.stringify(perms);
             } else {
-                // Nếu chế độ là Mặc định (Xem tất cả), xóa sạch JSON để trả về rỗng
                 hiddenInput.value = "";
             }
         });

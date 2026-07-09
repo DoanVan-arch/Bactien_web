@@ -63,10 +63,15 @@
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-200">
-                    {% for user in users %}
+                   {% for user in users %}
                     <tr class="hover:bg-gray-50">
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ user.id }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ user.username }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {{ user.username }}
+                            {% if not user.is_active %}
+                                <span class="ml-2 px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-500">Đã khóa</span>
+                            {% endif %}
+                        </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {% if user.role == 'admin' %}
                                 <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">Admin</span>
@@ -76,6 +81,7 @@
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                             {% if user.role != 'admin' %}
+                            <a href="{{ url_for('edit_user', user_id=user.id) }}" class="text-blue-600 hover:text-blue-900 mr-4">Cấu hình</a>
                             <a href="{{ url_for('delete_user', user_id=user.id) }}" onclick="return confirm('Bạn có chắc muốn xóa tài khoản này?')" class="text-red-600 hover:text-red-900">Xóa</a>
                             {% endif %}
                         </td>

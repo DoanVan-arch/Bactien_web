@@ -14,7 +14,7 @@
         </div>
     </nav>
 
-    <div class="max-w-3xl mx-auto mt-10 px-4">
+    <div class="max-w-4xl mx-auto mt-10 px-4 pb-20">
         <h2 class="text-2xl font-bold mb-6 border-b pb-2">Cấu hình cho tài khoản: <span class="text-blue-600">{{ user.username }}</span></h2>
 
         {% with messages = get_flashed_messages() %}
@@ -27,14 +27,14 @@
             {% endif %}
         {% endwith %}
 
-        <form method="POST" class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 space-y-6">
+        <form id="configForm" method="POST" class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 space-y-8">
             
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                     <label class="block text-sm font-bold text-gray-700 mb-2">Trạng thái tài khoản</label>
-                    <label class="inline-flex items-center cursor-pointer">
+                    <label class="inline-flex items-center cursor-pointer mt-2">
                         <input type="checkbox" name="is_active" {% if user.is_active %}checked{% endif %} class="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
-                        <span class="ml-2 text-gray-700">Cho phép Đăng nhập (Mở khóa)</span>
+                        <span class="ml-2 text-gray-700 font-medium">Cho phép Đăng nhập (Mở khóa)</span>
                     </label>
                 </div>
                 <div>
@@ -55,24 +55,124 @@
             <hr>
 
             <div>
-                <label class="block text-sm font-bold text-gray-700 mb-2">Phân quyền Cột dữ liệu (Định dạng JSON)</label>
-                <textarea name="column_permissions" rows="6" placeholder='{"Tên Sheet 1": ["Cột A", "Cột B"], "Tên Sheet 2": ["Cột C"]}'
-                          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm bg-gray-50">{{ user.column_permissions or '' }}</textarea>
-                <div class="text-xs text-gray-600 mt-2 space-y-1">
-                    <p><strong>Cơ chế hoạt động (Whitelist):</strong></p>
-                    <ul class="list-disc ml-5">
-                        <li>Nếu <strong>bỏ trống</strong>: Người dùng xem được tất cả các sheet và tất cả các cột (Mặc định).</li>
-                        <li>Nếu <strong>nhập cấu hình</strong>: Người dùng CHỈ xem được những sheet được liệt kê, và CHỈ xem được các cột được khai báo bên trong nó. Các sheet/cột không có tên sẽ bị hệ thống tự động ẩn đi.</li>
-                    </ul>
+                <label class="block text-sm font-bold text-gray-700 mb-2">Cấu hình Quyền xem Dữ liệu (Phân quyền theo File, Sheet và Cột)</label>
+                
+                <div class="flex items-center space-x-6 mb-4 mt-4">
+                    <label class="flex items-center cursor-pointer">
+                        <input type="radio" name="enable_permissions" value="no" {% if not user.column_permissions %}checked{% endif %} 
+                               class="w-4 h-4 text-blue-600 focus:ring-blue-500" onchange="togglePermTree()">
+                        <span class="ml-2 font-medium text-gray-700">Cho phép xem TOÀN BỘ (Mặc định)</span>
+                    </label>
+                    <label class="flex items-center cursor-pointer">
+                        <input type="radio" name="enable_permissions" value="yes" {% if user.column_permissions %}checked{% endif %} 
+                               class="w-4 h-4 text-blue-600 focus:ring-blue-500" onchange="togglePermTree()">
+                        <span class="ml-2 font-medium text-gray-700">Giới hạn Cột theo từng File/Sheet</span>
+                    </label>
                 </div>
+
+                <div id="permission_tree" class="{% if not user.column_permissions %}hidden{% endif %} bg-gray-50 p-4 border border-gray-200 rounded-lg max-h-[500px] overflow-y-auto">
+                    
+                    {% if not file_metadata %}
+                        <p class="text-sm text-yellow-600 italic">Hệ thống hiện chưa có file dữ liệu nào. Vui lòng tải file Excel lên hệ thống trước khi cấu hình phân quyền.</p>
+                    {% else %}
+                        
+                        <p class="text-sm text-gray-500 mb-4 bg-white p-3 border rounded shadow-sm">
+                            <span class="font-bold text-red-500">Lưu ý:</span> Người dùng sẽ <strong>CHỈ THẤY</strong> những Cột, Sheet và File mà bạn <strong>TÍCH CHỌN</strong> bên dưới. Nếu một File/Sheet không có bất kỳ cột nào được tích, hệ thống sẽ tự động ẩn luôn File/Sheet đó khỏi kết quả tìm kiếm của họ.
+                        </p>
+
+                        {% for file, sheets in file_metadata.items() %}
+                        <div class="mb-6 bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
+                            <h4 class="font-bold text-gray-800 bg-gray-200 px-4 py-3 flex items-center">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2 text-gray-600" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clip-rule="evenodd" />
+                                </svg>
+                                File: {{ file }}
+                            </h4>
+                            
+                            <div class="p-4 space-y-6">
+                                {% for sheet, columns in sheets.items() %}
+                                <div>
+                                    <h5 class="font-semibold text-blue-700 mb-3 ml-2 border-b pb-1 flex items-center">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                        </svg>
+                                        Sheet: {{ sheet }}
+                                    </h5>
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 ml-4">
+                                        {% for col in columns %}
+                                            {% set is_checked = false %}
+                                            {% if current_perms and file in current_perms and sheet in current_perms[file] and col in current_perms[file][sheet] %}
+                                                {% set is_checked = true %}
+                                            {% endif %}
+                                            
+                                            <label class="flex items-center space-x-2 text-sm text-gray-700 hover:bg-blue-50 p-2 rounded transition cursor-pointer border border-transparent hover:border-blue-100">
+                                                <input type="checkbox" class="perm-checkbox w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                                                       data-file="{{ file }}" data-sheet="{{ sheet }}" value="{{ col }}"
+                                                       {% if is_checked %}checked{% endif %}>
+                                                <span class="truncate font-medium" title="{{ col }}">{{ col }}</span>
+                                            </label>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% endif %}
+                </div>
+                
+                <input type="hidden" name="column_permissions" id="column_permissions_input">
             </div>
 
             <div class="flex justify-end pt-4">
-                <button type="submit" class="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow transition">
+                <button type="submit" class="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow-md transition">
                     Lưu Cấu Hình
                 </button>
             </div>
         </form>
     </div>
+
+    <script>
+        // Hàm ẩn hiện cây thư mục phân quyền
+        function togglePermTree() {
+            const isEnabled = document.querySelector('input[name="enable_permissions"]:checked').value === 'yes';
+            const tree = document.getElementById('permission_tree');
+            if (isEnabled) {
+                tree.classList.remove('hidden');
+            } else {
+                tree.classList.add('hidden');
+            }
+        }
+
+        // Bắt sự kiện khi bấm nút Submit (Lưu)
+        document.getElementById('configForm').addEventListener('submit', function(e) {
+            const isEnabled = document.querySelector('input[name="enable_permissions"]:checked').value === 'yes';
+            const hiddenInput = document.getElementById('column_permissions_input');
+
+            if (isEnabled) {
+                // Quét tất cả các ô Checkbox ĐÃ ĐƯỢC TÍCH
+                const checkboxes = document.querySelectorAll('.perm-checkbox:checked');
+                const perms = {};
+
+                // Xây dựng lại Object JSON theo định dạng chuẩn
+                checkboxes.forEach(cb => {
+                    const file = cb.getAttribute('data-file');
+                    const sheet = cb.getAttribute('data-sheet');
+                    const col = cb.value;
+
+                    if (!perms[file]) perms[file] = {};
+                    if (!perms[file][sheet]) perms[file][sheet] = [];
+                    
+                    perms[file][sheet].push(col);
+                });
+
+                // Chuyển Object thành chuỗi JSON và gán vào thẻ input ẩn
+                hiddenInput.value = JSON.stringify(perms);
+            } else {
+                // Nếu chế độ là Mặc định (Xem tất cả), xóa sạch JSON để trả về rỗng
+                hiddenInput.value = "";
+            }
+        });
+    </script>
 </body>
 </html>

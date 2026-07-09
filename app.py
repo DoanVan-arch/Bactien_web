@@ -39,15 +39,14 @@ def init_cache():
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             load_file_to_cache(filename, filepath)
 
-# --- MODEL CƠ SỞ DỮ LIỆU ĐƯỢC NÂNG CẤP ---
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(150), unique=True, nullable=False)
     password = db.Column(db.String(150), nullable=False)
     role = db.Column(db.String(20), default='viewer')
-    is_active = db.Column(db.Boolean, default=True) # Trạng thái khóa tài khoản
-    allowed_ips = db.Column(db.String(255), nullable=True) # Dải IP cho phép
-    column_permissions = db.Column(db.Text, nullable=True) # Phân quyền cột dạng JSON
+    is_active = db.Column(db.Boolean, default=True)
+    allowed_ips = db.Column(db.String(255), nullable=True)
+    column_permissions = db.Column(db.Text, nullable=True) # Lưu trữ JSON phân quyền mới
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -70,7 +69,6 @@ def create_admin():
         db.session.add(new_admin)
         db.session.commit()
 
-# --- LOGIC ĐĂNG NHẬP VÀ KIỂM TRA BẢO MẬT ---
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -78,18 +76,15 @@ def login():
         password = request.form.get('password')
         user = User.query.filter_by(username=username).first()
         
-        # Lấy IP của Client (Xử lý cả trường hợp qua Proxy của Railway)
         client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
         if client_ip:
             client_ip = client_ip.split(',')[0].strip()
 
         if user and check_password_hash(user.password, password):
-            # 1. Kiểm tra tài khoản có bị khóa không
             if not user.is_active:
                 flash('Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Admin.')
                 return render_template('login.html')
             
-            # 2. Kiểm tra dải IP (Không áp dụng chặn IP với admin để tránh tự khóa mình)
             if user.allowed_ips and user.role != 'admin':
                 allowed = [ip.strip() for ip in user.allowed_ips.split(',') if ip.strip()]
                 if allowed and not any(client_ip.startswith(ip) for ip in allowed):
@@ -107,7 +102,6 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
-# --- QUẢN LÝ VÀ CHỈNH SỬA TÀI KHOẢN ---
 @app.route('/manage_users', methods=['GET', 'POST'])
 @login_required
 @admin_required
@@ -122,11 +116,15 @@ def manage_users():
             new_user = User(username=username, password=hashed_password, role='viewer')
             db.session.add(new_user)
             db.session.commit()
-            flash('Tạo tài khoản thành công! Nhấp vào "Chỉnh sửa" để phân quyền chi tiết.')
+            flash('Tạo tài khoản thành công! Nhấp vào "Cấu hình" để phân quyền chi tiết.')
             return redirect(url_for('manage_users'))
     users = User.query.all()
     return render_template('manage_users.html', users=users)
 
+
+# ==============================================================
+# ROUTE MỚI ĐỂ XỬ LÝ GIAO DIỆN PHÂN QUYỀN TRỰC QUAN
+# ==============================================================
 @app.route('/edit_user/<int:user_id>', methods=['GET', 'POST'])
 @login_required
 @admin_required
@@ -140,18 +138,22 @@ def edit_user(user_id):
         user.is_active = 'is_active' in request.form
         user.allowed_ips = request.form.get('allowed_ips')
         
-        perms = request.form.get('column_permissions').strip()
-        if perms:
-            try:
-                json.loads(perms) # Kiểm tra xem cú pháp JSON có hợp lệ không
-                user.column_permissions = perms
-            except ValueError:
-                flash('Lỗi: Cấu hình phân quyền cột không đúng định dạng JSON.')
-                return render_template('edit_user.html', user=user)
+        # Xử lý Phân quyền cột từ dữ liệu sinh ra bởi Javascript
+        enable_perms = request.form.get('enable_permissions')
+        if enable_perms == 'yes':
+            perms = request.form.get('column_permissions')
+            if perms:
+                try:
+                    json.loads(perms)
+                    user.column_permissions = perms
+                except ValueError:
+                    flash('Lỗi cấu trúc dữ liệu phân quyền.')
+                    return redirect(url_for('edit_user', user_id=user.id))
+            else:
+                user.column_permissions = "{}" # Nếu không tích gì mà vẫn bật, tức là chặn tất cả
         else:
-            user.column_permissions = None
+            user.column_permissions = None # Tắt phân quyền -> Xem tất cả
             
-        # Đổi mật khẩu nếu có nhập
         new_password = request.form.get('password')
         if new_password:
             user.password = generate_password_hash(new_password, method='pbkdf2:sha256')
@@ -160,7 +162,22 @@ def edit_user(user_id):
         flash('Cập nhật tài khoản thành công!')
         return redirect(url_for('manage_users'))
         
-    return render_template('edit_user.html', user=user)
+    # Tạo metadata chứa toàn bộ File -> Sheet -> Cột để truyền ra giao diện
+    file_metadata = {}
+    for fname, f_data in DATA_CACHE.items():
+        file_metadata[fname] = {}
+        for sname, df in f_data.items():
+            file_metadata[fname][sname] = df.columns.tolist()
+
+    current_perms = {}
+    if user.column_permissions:
+        try:
+            current_perms = json.loads(user.column_permissions)
+        except:
+            current_perms = {}
+            
+    return render_template('edit_user.html', user=user, file_metadata=file_metadata, current_perms=current_perms)
+
 
 @app.route('/delete_user/<int:user_id>')
 @login_required
@@ -208,7 +225,10 @@ def upload_file():
                 flash(f'Lỗi khi xử lý file: {str(e)}')
     return render_template('upload.html')
 
-# --- LOGIC TÌM KIẾM CÓ PHÂN QUYỀN CỘT ---
+
+# ==============================================================
+# LOGIC TÌM KIẾM ĐÃ CẬP NHẬT KIỂM TRA THEO TỪNG FILE
+# ==============================================================
 @app.route('/', methods=['GET', 'POST'])
 @app.route('/search', methods=['GET', 'POST'])
 @login_required
@@ -219,13 +239,12 @@ def search():
     selected_file = ""
     display_only_data = {}
 
-    # Lấy và phân tích cấu hình phân quyền cột của User hiện tại
     user_perms = None
     if current_user.role != 'admin' and current_user.column_permissions:
         try:
             user_perms = json.loads(current_user.column_permissions)
         except:
-            user_perms = {} # Nếu cấu hình lỗi, ẩn tất cả dữ liệu để an toàn
+            user_perms = {} 
 
     if request.method == 'POST':
         query = request.form.get('query', '').strip()
@@ -238,12 +257,15 @@ def search():
                     xls_data = DATA_CACHE.get(file_name, {})
                     
                     for sheet_name, df in xls_data.items():
-                        # --- KIỂM TRA QUYỀN TRUY CẬP SHEET VÀ CỘT ---
+                        
+                        # --- KIỂM TRA PHÂN QUYỀN CHUẨN MỚI (TỪNG FILE -> TỪNG SHEET) ---
                         allowed_cols = df.columns.tolist()
                         if user_perms is not None:
-                            if sheet_name not in user_perms:
-                                continue # Không có quyền xem sheet này
-                            allowed_cols = [c for c in user_perms[sheet_name] if c in df.columns]
+                            # Chặn nếu Tên file không được cấp quyền, HOẶC Tên sheet không được cấp quyền trong file đó
+                            if file_name not in user_perms or sheet_name not in user_perms[file_name]:
+                                continue
+                            
+                            allowed_cols = [c for c in user_perms[file_name][sheet_name] if c in df.columns]
                             if not allowed_cols:
                                 continue
 
@@ -264,7 +286,6 @@ def search():
                             
                             matches = df[final_mask]
                             if not matches.empty:
-                                # Lọc cột trước khi xuất ra HTML
                                 matches = matches[allowed_cols]
                                 if sheet_name in results:
                                     results[sheet_name].extend(matches.to_dict('records'))

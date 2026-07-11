@@ -90,7 +90,7 @@ def login():
         if user and check_password_hash(user.password, password):
             # 1. Kiểm tra tài khoản khóa
             if not user.is_active:
-                flash('Tài khoản của đồng chí hiện đang bị khóa.')
+                flash('Tài khoản của bạn hiện đang bị khóa.')
                 return render_template('login.html', client_ip=client_ip)
             
             # 2. Kiểm tra dải IP mạng kiểm soát (Không áp chặn IP với tài khoản admin gốc để tránh tự khóa)

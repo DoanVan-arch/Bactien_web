@@ -198,6 +198,7 @@ def upload_file():
             except Exception as e: flash(f'Lỗi khi xử lý file: {str(e)}')
     return render_template('upload.html')
 
+@app.route('/', methods=['GET', 'POST'])
 @app.route('/search', methods=['GET', 'POST'])
 @login_required
 def search():
@@ -253,4 +254,3 @@ init_cache()
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000, threaded=True)  # Enable threaded mode for handling multiple requests
-

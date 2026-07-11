@@ -6,41 +6,76 @@
     <title>Đăng nhập | Hệ thống tra cứu</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
 
-    <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
-        <div class="text-center mb-8">
-            <h2 class="text-2xl font-bold text-gray-800">Đăng nhập hệ thống</h2>
-            <p class="text-sm text-gray-500 mt-2">Vui lòng nhập thông tin để tiếp tục</p>
+    <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-md border border-gray-200">
+        <div class="text-center mb-6">
+            <h2 class="text-2xl font-bold text-gray-800">Hệ Thống Tra Cứu Dữ Liệu</h2>
+            <p class="text-sm text-gray-400 mt-1">Xác thực tài khoản và kiểm tra hạ tầng mạng</p>
+        </div>
+
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-3.5 mb-5 flex items-center justify-between shadow-sm">
+            <div class="text-left">
+                <span class="block text-xs font-bold text-blue-500 uppercase tracking-wider">IP Máy trạm của đồng chí</span>
+                <span id="clientIpText" class="text-base font-mono font-bold text-blue-900 mt-0.5 block">{{ client_ip }}</span>
+            </div>
+            <button onclick="copyIpAddress(this)" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded transition shadow-sm outline-none">
+                Sao chép IP
+            </button>
         </div>
         
         {% with messages = get_flashed_messages() %}
             {% if messages %}
-                <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6 rounded">
-                {% for message in messages %}
-                    <p class="text-sm">{{ message }}</p>
+                <div class="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 mb-5 rounded text-xs font-medium leading-relaxed shadow-sm">
+                {% for message in messages %} 
+                    {{ message }}<br> 
                 {% endfor %}
                 </div>
             {% endif %}
         {% endwith %}
 
-        <form method="POST" action="{{ url_for('login') }}" class="space-y-6">
+        <form method="POST" action="{{ url_for('login') }}" class="space-y-5">
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Tên đăng nhập</label>
-                <input type="text" name="username" required 
-                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition">
+                <input type="text" name="username" required autocomplete="username"
+                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition text-sm">
             </div>
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Mật khẩu</label>
-                <input type="password" name="password" required 
-                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition">
+                <input type="password" name="password" required autocomplete="current-password"
+                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition text-sm">
             </div>
-            <button type="submit" 
-                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg transition duration-200">
-                Đăng nhập
-            </button>
+            
+            <div class="pt-2">
+                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-lg transition shadow">
+                    Đăng nhập hệ thống
+                </button>
+            </div>
         </form>
+        
+        <p class="text-center text-xs text-gray-400 mt-6 border-t pt-4">
+            🔒 Mạng điều hành an toàn kiểm soát kết nối tự động.
+        </p>
     </div>
 
+    <script>
+        function copyIpAddress(btn) {
+            const ipText = document.getElementById('clientIpText').innerText;
+            navigator.clipboard.writeText(ipText).then(() => {
+                const oldText = btn.innerText;
+                btn.innerText = 'Đã Copy!';
+                btn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+                btn.classList.add('bg-green-600');
+                
+                setTimeout(() => {
+                    btn.innerText = oldText;
+                    btn.classList.remove('bg-green-600');
+                    btn.classList.add('bg-blue-600');
+                }, 1200);
+            }).catch(err => {
+                alert('Không thể sao chép tự động: ' + err);
+            });
+        }
+    </script>
 </body>
 </html>

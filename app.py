@@ -3,7 +3,7 @@ import re
 import json
 import pandas as pd
 from functools import wraps
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.utils import secure_filename
@@ -29,9 +29,9 @@ def load_file_to_cache(filename, filepath):
         for sheet_name in xls:
             xls[sheet_name] = xls[sheet_name].fillna('')
         DATA_CACHE[filename] = xls
-        print(f"Đã cache file: {filename}")
+        print(f"Đã nạp bộ đệm file: {filename}")
     except Exception as e:
-        print(f"Lỗi cache file {filename}: {e}")
+        print(f"Lỗi nạp bộ đệm file {filename}: {e}")
 
 def init_cache():
     for filename in os.listdir(app.config['UPLOAD_FOLDER']):
@@ -39,14 +39,15 @@ def init_cache():
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             load_file_to_cache(filename, filepath)
 
+# --- MODEL CƠ SỞ DỮ LIỆU ---
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(150), unique=True, nullable=False)
     password = db.Column(db.String(150), nullable=False)
     role = db.Column(db.String(20), default='viewer')
     is_active = db.Column(db.Boolean, default=True)
-    allowed_ips = db.Column(db.String(255), nullable=True)
-    column_permissions = db.Column(db.Text, nullable=True) # Lưu trữ JSON phân quyền mới
+    allowed_ips = db.Column(db.String(255), nullable=True) # Lưu dải IP cấu hình
+    column_permissions = db.Column(db.Text, nullable=True)
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -69,32 +70,43 @@ def create_admin():
         db.session.add(new_admin)
         db.session.commit()
 
+def get_client_ip():
+    """Hàm lấy địa chỉ IP thực tế của máy trạm (Hỗ trợ cả môi trường Proxy mạng)"""
+    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    if client_ip:
+        client_ip = client_ip.split(',')[0].strip()
+    return client_ip
+
+# --- LOGIC ĐĂNG NHẬP KIỂM TRA IP CHẶT CHẼ ---
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    client_ip = get_client_ip()
+    
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
         user = User.query.filter_by(username=username).first()
-        
-        client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
-        if client_ip:
-            client_ip = client_ip.split(',')[0].strip()
 
         if user and check_password_hash(user.password, password):
+            # 1. Kiểm tra tài khoản khóa
             if not user.is_active:
-                flash('Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Admin.')
-                return render_template('login.html')
+                flash('Tài khoản của đồng chí hiện đang bị khóa.')
+                return render_template('login.html', client_ip=client_ip)
             
+            # 2. Kiểm tra dải IP mạng kiểm soát (Không áp chặn IP với tài khoản admin gốc để tránh tự khóa)
             if user.allowed_ips and user.role != 'admin':
-                allowed = [ip.strip() for ip in user.allowed_ips.split(',') if ip.strip()]
-                if allowed and not any(client_ip.startswith(ip) for ip in allowed):
-                    flash(f'Truy cập bị từ chối từ IP: {client_ip}. Nằm ngoài dải mạng cho phép.')
-                    return render_template('login.html')
+                allowed_ranges = [ip.strip() for ip in user.allowed_ips.split(',') if ip.strip()]
+                # Kiểm tra IP máy trạm có bắt đầu bằng dải mạng nào trong whitelist không
+                if allowed_ranges and not any(client_ip.startswith(r) for r in allowed_ranges):
+                    flash(f'⚠️ TRUY CẬP BỊ TỪ CHỐI: IP máy trạm ({client_ip}) chưa được cấp phép đăng nhập tài khoản này. Vui lòng sao chép IP phía dưới gửi cho Admin để phê duyệt dải mạng ngoài.')
+                    return render_template('login.html', client_ip=client_ip)
 
             login_user(user)
             return redirect(url_for('search'))
+            
         flash('Sai tên đăng nhập hoặc mật khẩu.')
-    return render_template('login.html')
+    
+    return render_template('login.html', client_ip=client_ip)
 
 @app.route('/logout')
 @login_required
@@ -116,80 +128,46 @@ def manage_users():
             new_user = User(username=username, password=hashed_password, role='viewer')
             db.session.add(new_user)
             db.session.commit()
-            flash('Tạo tài khoản thành công! Nhấp vào "Cấu hình" để phân quyền chi tiết.')
+            flash('Tạo tài khoản thành công!')
             return redirect(url_for('manage_users'))
     users = User.query.all()
     return render_template('manage_users.html', users=users)
 
-
-# ==============================================================
-# ROUTE MỚI ĐỂ XỬ LÝ GIAO DIỆN PHÂN QUYỀN TRỰC QUAN
-# ==============================================================
 @app.route('/edit_user/<int:user_id>', methods=['GET', 'POST'])
 @login_required
 @admin_required
 def edit_user(user_id):
     user = User.query.get_or_404(user_id)
-    if user.role == 'admin':
-        flash('Không thể thay đổi phân quyền của Admin gốc.')
-        return redirect(url_for('manage_users'))
-
+    if user.role == 'admin': return redirect(url_for('manage_users'))
     if request.method == 'POST':
         user.is_active = 'is_active' in request.form
         user.allowed_ips = request.form.get('allowed_ips')
-        
-        # Xử lý Phân quyền cột từ dữ liệu sinh ra bởi Javascript
         enable_perms = request.form.get('enable_permissions')
         if enable_perms == 'yes':
             perms = request.form.get('column_permissions')
-            if perms:
-                try:
-                    json.loads(perms)
-                    user.column_permissions = perms
-                except ValueError:
-                    flash('Lỗi cấu trúc dữ liệu phân quyền.')
-                    return redirect(url_for('edit_user', user_id=user.id))
-            else:
-                user.column_permissions = "{}" # Nếu không tích gì mà vẫn bật, tức là chặn tất cả
+            if perms: user.column_permissions = perms
         else:
-            user.column_permissions = None # Tắt phân quyền -> Xem tất cả
-            
+            user.column_permissions = None
         new_password = request.form.get('password')
-        if new_password:
-            user.password = generate_password_hash(new_password, method='pbkdf2:sha256')
-
+        if new_password: user.password = generate_password_hash(new_password, method='pbkdf2:sha256')
         db.session.commit()
-        flash('Cập nhật tài khoản thành công!')
+        flash('Cập nhật cấu hình thành công!')
         return redirect(url_for('manage_users'))
-        
-    # Tạo metadata chứa toàn bộ File -> Sheet -> Cột để truyền ra giao diện
     file_metadata = {}
     for fname, f_data in DATA_CACHE.items():
         file_metadata[fname] = {}
-        for sname, df in f_data.items():
-            file_metadata[fname][sname] = df.columns.tolist()
-
-    current_perms = {}
-    if user.column_permissions:
-        try:
-            current_perms = json.loads(user.column_permissions)
-        except:
-            current_perms = {}
-            
+        for sname, df in f_data.items(): file_metadata[fname][sname] = df.columns.tolist()
+    current_perms = json.loads(user.column_permissions) if user.column_permissions else {}
     return render_template('edit_user.html', user=user, file_metadata=file_metadata, current_perms=current_perms)
-
 
 @app.route('/delete_user/<int:user_id>')
 @login_required
 @admin_required
 def delete_user(user_id):
     user = User.query.get_or_404(user_id)
-    if user.role == 'admin':
-        flash('Không thể xóa tài khoản Admin gốc.')
-    else:
+    if user.role != 'admin':
         db.session.delete(user)
         db.session.commit()
-        flash('Đã xóa tài khoản thành công.')
     return redirect(url_for('manage_users'))
 
 @app.route('/upload', methods=['GET', 'POST'])
@@ -209,27 +187,17 @@ def upload_file():
                     with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
                         all_sheets = set(old_data.keys()).union(set(new_data.keys()))
                         for sheet in all_sheets:
-                            if sheet in old_data and sheet in new_data:
-                                combined = pd.concat([old_data[sheet], new_data[sheet]], ignore_index=True)
-                            elif sheet in old_data:
-                                combined = old_data[sheet]
-                            else:
-                                combined = new_data[sheet]
+                            if sheet in old_data and sheet in new_data: combined = pd.concat([old_data[sheet], new_data[sheet]], ignore_index=True)
+                            elif sheet in old_data: combined = old_data[sheet]
+                            else: combined = new_data[sheet]
                             combined.to_excel(writer, sheet_name=sheet, index=False)
-                else:
-                    file.save(filepath)
+                else: file.save(filepath)
                 load_file_to_cache(filename, filepath)
                 flash('Xử lý file thành công!')
                 return redirect(url_for('search'))
-            except Exception as e:
-                flash(f'Lỗi khi xử lý file: {str(e)}')
+            except Exception as e: flash(f'Lỗi khi xử lý file: {str(e)}')
     return render_template('upload.html')
 
-
-# ==============================================================
-# LOGIC TÌM KIẾM ĐÃ CẬP NHẬT KIỂM TRA THEO TỪNG FILE
-# ==============================================================
-@app.route('/', methods=['GET', 'POST'])
 @app.route('/search', methods=['GET', 'POST'])
 @login_required
 def search():
@@ -238,76 +206,51 @@ def search():
     query = ""
     selected_file = ""
     display_only_data = {}
-
-    user_perms = None
-    if current_user.role != 'admin' and current_user.column_permissions:
-        try:
-            user_perms = json.loads(current_user.column_permissions)
-        except:
-            user_perms = {} 
-
+    user_perms = json.loads(current_user.column_permissions) if current_user.role != 'admin' and current_user.column_permissions else None
     if request.method == 'POST':
         query = request.form.get('query', '').strip()
         selected_file = request.form.get('file', '') if current_user.role == 'admin' else ''
-
         if query:
             files_to_scan = [selected_file] if selected_file and selected_file in DATA_CACHE else list(DATA_CACHE.keys())
             try:
                 for file_name in files_to_scan:
                     xls_data = DATA_CACHE.get(file_name, {})
-                    
                     for sheet_name, df in xls_data.items():
-                        
-                        # --- KIỂM TRA PHÂN QUYỀN CHUẨN MỚI (TỪNG FILE -> TỪNG SHEET) ---
                         allowed_cols = df.columns.tolist()
                         if user_perms is not None:
-                            # Chặn nếu Tên file không được cấp quyền, HOẶC Tên sheet không được cấp quyền trong file đó
-                            if file_name not in user_perms or sheet_name not in user_perms[file_name]:
-                                continue
-                            
+                            if file_name not in user_perms or sheet_name not in user_perms[file_name]: continue
                             allowed_cols = [c for c in user_perms[file_name][sheet_name] if c in df.columns]
-                            if not allowed_cols:
-                                continue
-
+                            if not allowed_cols: continue
                         if re.search(r'\d{4}\s*-\s*\d{4}', str(sheet_name)):
                             row_strings = df.astype(str).apply(lambda x: ' '.join(x), axis=1).str.lower()
                             or_groups = query.lower().split('|')
                             final_mask = pd.Series(False, index=df.index)
-                            
                             for group in or_groups:
                                 if not group.strip(): continue
                                 and_tokens = group.split('*')
                                 group_mask = pd.Series(True, index=df.index)
                                 for token in and_tokens:
                                     token = token.strip()
-                                    if token:
-                                        group_mask = group_mask & row_strings.str.contains(token, regex=False)
+                                    if token: group_mask = group_mask & row_strings.str.contains(token, regex=False)
                                 final_mask = final_mask | group_mask
-                            
                             matches = df[final_mask]
                             if not matches.empty:
                                 matches = matches[allowed_cols]
-                                if sheet_name in results:
-                                    results[sheet_name].extend(matches.to_dict('records'))
-                                else:
-                                    results[sheet_name] = matches.to_dict('records')
+                                if sheet_name in results: results[sheet_name].extend(matches.to_dict('records'))
+                                else: results[sheet_name] = matches.to_dict('records')
                         else:
                             if not df.empty:
                                 df_filtered = df[allowed_cols]
-                                if sheet_name in display_only_data:
-                                    display_only_data[sheet_name].extend(df_filtered.to_dict('records'))
-                                else:
-                                    display_only_data[sheet_name] = df_filtered.to_dict('records')
-            except Exception as e:
-                flash(f'Lỗi khi xử lý dữ liệu tìm kiếm: {str(e)}')
-
+                                if sheet_name in display_only_data: display_only_data[sheet_name].extend(df_filtered.to_dict('records'))
+                                else: display_only_data[sheet_name] = df_filtered.to_dict('records')
+            except Exception as e: flash(f'Lỗi dữ liệu: {str(e)}')
     return render_template('search.html', files=files, results=results, query=query, selected_file=selected_file, display_only_data=display_only_data)
 
 with app.app_context():
     db.create_all()
     create_admin()
-
 init_cache()
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000, threaded=True)  # Enable threaded mode for handling multiple requests
+

@@ -238,15 +238,21 @@
             }
         }
 
-        // Đồng bộ cột trùng tên (Giữ nguyên)
+        // ==============================================================
+        // LOGIC KHỞI TẠO CHỨC NĂNG ĐỒNG BỘ CỘT TRÙNG TÊN (BỎ QUA HOA/THƯỜNG)
+        // ==============================================================
         document.querySelectorAll('.perm-checkbox').forEach(checkbox => {
             checkbox.addEventListener('change', function() {
                 const isSyncEnabled = document.getElementById('sync_columns_toggle').checked;
+                
                 if (isSyncEnabled) {
-                    const targetColumnName = this.value;
+                    // Chuyển tên cột gốc về chữ thường và xóa khoảng trắng thừa
+                    const targetColumnName = this.value.trim().toLowerCase(); 
                     const isChecked = this.checked;
+                    
                     document.querySelectorAll('.perm-checkbox').forEach(cb => {
-                        if (cb.value === targetColumnName) {
+                        // Chuyển tên các cột khác về chữ thường để so sánh
+                        if (cb.value.trim().toLowerCase() === targetColumnName) {
                             cb.checked = isChecked;
                         }
                     });

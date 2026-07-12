@@ -21,7 +21,7 @@
         </div>
     </nav>
 
-    <div class="max-w-4xl mx-auto mt-10 px-4">
+    <div class="max-w-5xl mx-auto mt-10 px-4">
         {% with messages = get_flashed_messages() %}
             {% if messages %}
                 <div class="bg-blue-50 border-l-4 border-blue-400 text-blue-700 p-4 mb-6 rounded">
@@ -32,8 +32,9 @@
             {% endif %}
         {% endwith %}
 
+        <!-- Form tạo tài khoản -->
         <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-8">
-            <h3 class="text-lg font-bold mb-4 border-b pb-2">Tạo tài khoản người xem mới</h3>
+            <h3 class="text-lg font-bold mb-4 border-b pb-2">Tạo tài khoản mới</h3>
             <form method="POST" class="flex flex-col md:flex-row gap-4 items-end">
                 <div class="flex-1 w-full">
                     <label class="block text-sm font-medium text-gray-700 mb-1">Tên đăng nhập</label>
@@ -43,53 +44,99 @@
                     <label class="block text-sm font-medium text-gray-700 mb-1">Mật khẩu</label>
                     <input type="password" name="password" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
                 </div>
+                <div class="flex-1 w-full md:w-1/4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Cấp quyền</label>
+                    <select name="role" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                        <option value="viewer">Người xem (Viewer)</option>
+                        <option value="admin">Quản trị viên (Admin)</option>
+                    </select>
+                </div>
                 <button type="submit" class="w-full md:w-auto px-6 py-2.5 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg shadow transition">
                     Tạo tài khoản
                 </button>
             </form>
         </div>
 
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div class="bg-gray-50 px-6 py-4 border-b border-gray-200">
-                <h3 class="font-semibold text-gray-700">Danh sách tài khoản hệ thống</h3>
-            </div>
-            <table class="min-w-full divide-y divide-gray-200">
-                <thead class="bg-white">
-                    <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tên đăng nhập</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Phân quyền</th>
-                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Thao tác</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-gray-200">
-                   {% for user in users %}
-                    <tr class="hover:bg-gray-50">
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ user.id }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                            {{ user.username }}
-                            {% if not user.is_active %}
-                                <span class="ml-2 px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-500">Đã khóa</span>
-                            {% endif %}
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {% if user.role == 'admin' %}
-                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">Admin</span>
-                            {% else %}
-                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Người xem</span>
-                            {% endif %}
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                            {% if user.role != 'admin' %}
-                            <a href="{{ url_for('edit_user', user_id=user.id) }}" class="text-blue-600 hover:text-blue-900 mr-4">Cấu hình</a>
-                            <a href="{{ url_for('delete_user', user_id=user.id) }}" onclick="return confirm('Bạn có chắc muốn xóa tài khoản này?')" class="text-red-600 hover:text-red-900">Xóa</a>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+        <!-- DANH SÁCH TÀI KHOẢN (BỌC TRONG FORM ĐỂ XỬ LÝ HÀNG LOẠT) -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-10">
+            <form method="POST" action="{{ url_for('bulk_action') }}" id="bulkForm">
+                <div class="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                    <h3 class="font-semibold text-gray-700">Danh sách tài khoản hệ thống</h3>
+                    
+                    <!-- CÁC NÚT THAO TÁC HÀNG LOẠT -->
+                    <div class="space-x-2">
+                        <button type="submit" name="action" value="edit" class="px-4 py-1.5 text-sm bg-blue-100 text-blue-700 hover:bg-blue-200 font-bold rounded shadow-sm transition">
+                            Cấu hình TK đã chọn
+                        </button>
+                        <button type="submit" name="action" value="delete" onclick="return confirm('CẢNH BÁO: Bạn có chắc chắn muốn xóa vĩnh viễn tất cả các tài khoản đã chọn?')" class="px-4 py-1.5 text-sm bg-red-100 text-red-700 hover:bg-red-200 font-bold rounded shadow-sm transition">
+                            Xóa TK đã chọn
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-white">
+                            <tr>
+                                <!-- NÚT CHỌN TẤT CẢ -->
+                                <th class="px-6 py-3 text-left w-10">
+                                    <input type="checkbox" id="selectAll" class="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer">
+                                </th>
+                                <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Tên đăng nhập</th>
+                                <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Phân quyền</th>
+                                <th class="px-6 py-3 text-right text-xs font-bold text-gray-500 uppercase">Thao tác</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200">
+                            {% for user in users %}
+                            <tr class="hover:bg-gray-50 transition-colors">
+                                <!-- CHECKBOX TỪNG NGƯỜI (Ẩn với Admin gốc) -->
+                                <td class="px-6 py-4">
+                                    {% if user.username != 'admin' %}
+                                    <input type="checkbox" name="user_ids" value="{{ user.id }}" class="user-checkbox w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer">
+                                    {% endif %}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                    {{ user.username }}
+                                    {% if not user.is_active %}
+                                        <span class="ml-2 px-2 py-0.5 inline-flex text-xs leading-5 font-semibold rounded-md bg-red-100 text-red-600">Đã khóa</span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    {% if user.role == 'admin' %}
+                                        <span class="px-2 py-0.5 inline-flex text-xs leading-5 font-bold rounded-md bg-purple-100 text-purple-700">Admin</span>
+                                    {% else %}
+                                        <span class="px-2 py-0.5 inline-flex text-xs leading-5 font-semibold rounded-md bg-blue-100 text-blue-700">Người xem</span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-3">
+                                    {% if user.username != 'admin' %}
+                                        <a href="{{ url_for('edit_user', user_id=user.id) }}" class="text-blue-600 hover:text-blue-900">Cấu hình</a>
+                                    {% else %}
+                                        <span class="text-gray-400 italic text-xs">(Mặc định)</span>
+                                    {% endif %}
+                                    
+                                    {% if user.username != 'admin' and user.id != current_user.id %}
+                                        <a href="{{ url_for('delete_user', user_id=user.id) }}" onclick="return confirm('Đồng chí có chắc muốn xóa vĩnh viễn tài khoản này?')" class="text-red-600 hover:text-red-900">Xóa</a>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </form>
         </div>
     </div>
+
+    <!-- Script xử lý nút Chọn tất cả -->
+    <script>
+        document.getElementById('selectAll').addEventListener('change', function() {
+            const checkboxes = document.querySelectorAll('.user-checkbox');
+            checkboxes.forEach(cb => {
+                cb.checked = this.checked;
+            });
+        });
+    </script>
 </body>
 </html>

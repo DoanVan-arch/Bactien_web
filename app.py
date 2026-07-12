@@ -39,14 +39,13 @@ def init_cache():
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             load_file_to_cache(filename, filepath)
 
-# --- MODEL CƠ SỞ DỮ LIỆU ---
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(150), unique=True, nullable=False)
     password = db.Column(db.String(150), nullable=False)
     role = db.Column(db.String(20), default='viewer')
     is_active = db.Column(db.Boolean, default=True)
-    allowed_ips = db.Column(db.String(255), nullable=True) # Lưu dải IP cấu hình
+    allowed_ips = db.Column(db.String(255), nullable=True) 
     column_permissions = db.Column(db.Text, nullable=True)
 
 @login_manager.user_loader
@@ -71,41 +70,34 @@ def create_admin():
         db.session.commit()
 
 def get_client_ip():
-    """Hàm lấy địa chỉ IP thực tế của máy trạm (Hỗ trợ cả môi trường Proxy mạng)"""
     client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
     if client_ip:
         client_ip = client_ip.split(',')[0].strip()
     return client_ip
 
-# --- LOGIC ĐĂNG NHẬP KIỂM TRA IP CHẶT CHẼ ---
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     client_ip = get_client_ip()
-    
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
         user = User.query.filter_by(username=username).first()
 
         if user and check_password_hash(user.password, password):
-            # 1. Kiểm tra tài khoản khóa
             if not user.is_active:
-                flash('Tài khoản của bạn hiện đang bị khóa.')
+                flash('Tài khoản của đồng chí hiện đang bị khóa.')
                 return render_template('login.html', client_ip=client_ip)
             
-            # 2. Kiểm tra dải IP mạng kiểm soát (Không áp chặn IP với tài khoản admin gốc để tránh tự khóa)
             if user.allowed_ips and user.role != 'admin':
                 allowed_ranges = [ip.strip() for ip in user.allowed_ips.split(',') if ip.strip()]
-                # Kiểm tra IP máy trạm có bắt đầu bằng dải mạng nào trong whitelist không
                 if allowed_ranges and not any(client_ip.startswith(r) for r in allowed_ranges):
-                    flash(f'⚠️ TRUY CẬP BỊ TỪ CHỐI: IP máy trạm ({client_ip}) chưa được cấp phép đăng nhập tài khoản này. Vui lòng sao chép IP phía dưới gửi cho Admin để phê duyệt dải mạng ngoài.')
+                    flash(f'⚠️ TRUY CẬP BỊ TỪ CHỐI: IP máy trạm ({client_ip}) chưa được cấp phép. Vui lòng liên hệ Admin.')
                     return render_template('login.html', client_ip=client_ip)
 
             login_user(user)
             return redirect(url_for('search'))
             
         flash('Sai tên đăng nhập hoặc mật khẩu.')
-    
     return render_template('login.html', client_ip=client_ip)
 
 @app.route('/logout')
@@ -121,11 +113,12 @@ def manage_users():
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
+        role = request.form.get('role', 'viewer')
         if User.query.filter_by(username=username).first():
             flash('Tên đăng nhập đã tồn tại.')
         else:
             hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
-            new_user = User(username=username, password=hashed_password, role='viewer')
+            new_user = User(username=username, password=hashed_password, role=role)
             db.session.add(new_user)
             db.session.commit()
             flash('Tạo tài khoản thành công!')
@@ -138,7 +131,9 @@ def manage_users():
 @admin_required
 def edit_user(user_id):
     user = User.query.get_or_404(user_id)
-    if user.role == 'admin': return redirect(url_for('manage_users'))
+    if user.username == 'admin': 
+        flash('Không thể thay đổi cấu hình của tài khoản Admin gốc.')
+        return redirect(url_for('manage_users'))
     if request.method == 'POST':
         user.is_active = 'is_active' in request.form
         user.allowed_ips = request.form.get('allowed_ips')
@@ -165,9 +160,90 @@ def edit_user(user_id):
 @admin_required
 def delete_user(user_id):
     user = User.query.get_or_404(user_id)
-    if user.role != 'admin':
+    if user.username == 'admin':
+        flash('Không thể xóa tài khoản Admin gốc (root).')
+    elif user.id == current_user.id:
+        flash('Đồng chí không thể tự xóa chính tài khoản của mình.')
+    else:
         db.session.delete(user)
         db.session.commit()
+        flash('Đã xóa tài khoản thành công.')
+    return redirect(url_for('manage_users'))
+
+# =========================================================
+# ROUTE MỚI: XỬ LÝ THAO TÁC HÀNG LOẠT (BULK ACTIONS)
+# =========================================================
+@app.route('/bulk_action', methods=['POST'])
+@login_required
+@admin_required
+def bulk_action():
+    user_ids = request.form.getlist('user_ids')
+    action = request.form.get('action')
+    
+    if not user_ids:
+        flash('Vui lòng chọn ít nhất một tài khoản để thao tác.')
+        return redirect(url_for('manage_users'))
+        
+    users_to_process = User.query.filter(User.id.in_(user_ids)).all()
+    
+    # THAO TÁC 1: XÓA HÀNG LOẠT
+    if action == 'delete':
+        deleted_count = 0
+        for u in users_to_process:
+            if u.username == 'admin' or u.id == current_user.id:
+                continue # Bỏ qua Admin gốc và bản thân
+            db.session.delete(u)
+            deleted_count += 1
+        db.session.commit()
+        flash(f'Đã xóa {deleted_count} tài khoản thành công.')
+        return redirect(url_for('manage_users'))
+        
+    # THAO TÁC 2: CHUYỂN HƯỚNG SANG TRANG CẤU HÌNH HÀNG LOẠT
+    elif action == 'edit':
+        # Loại bỏ admin gốc khỏi danh sách cấu hình hàng loạt
+        users_to_edit = [u for u in users_to_process if u.username != 'admin']
+        if not users_to_edit:
+            flash('Các tài khoản được chọn không hợp lệ để cấu hình.')
+            return redirect(url_for('manage_users'))
+            
+        file_metadata = {}
+        for fname, f_data in DATA_CACHE.items():
+            file_metadata[fname] = {}
+            for sname, df in f_data.items(): file_metadata[fname][sname] = df.columns.tolist()
+            
+        return render_template('bulk_edit.html', users=users_to_edit, file_metadata=file_metadata)
+    
+    return redirect(url_for('manage_users'))
+
+@app.route('/save_bulk_edit', methods=['POST'])
+@login_required
+@admin_required
+def save_bulk_edit():
+    user_ids = request.form.getlist('user_ids')
+    if not user_ids:
+        return redirect(url_for('manage_users'))
+        
+    users = User.query.filter(User.id.in_(user_ids)).all()
+    
+    is_active = 'is_active' in request.form
+    allowed_ips = request.form.get('allowed_ips')
+    enable_perms = request.form.get('enable_permissions')
+    
+    perms = request.form.get('column_permissions') if enable_perms == 'yes' else None
+    new_password = request.form.get('password')
+    
+    for u in users:
+        if u.username == 'admin':
+            continue # Bảo vệ an toàn tuyệt đối
+            
+        u.is_active = is_active
+        u.allowed_ips = allowed_ips
+        u.column_permissions = perms
+        if new_password:
+            u.password = generate_password_hash(new_password, method='pbkdf2:sha256')
+            
+    db.session.commit()
+    flash(f'Cập nhật cấu hình hàng loạt cho {len(users)} tài khoản thành công!')
     return redirect(url_for('manage_users'))
 
 @app.route('/upload', methods=['GET', 'POST'])

@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Cấu hình Bảo mật Hàng loạt</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        function toggleAccordion(id) {
+            const el = document.getElementById(id);
+            const icon = document.getElementById('icon-' + id);
+            if (el.classList.contains('hidden')) {
+                el.classList.remove('hidden');
+                icon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />`;
+            } else {
+                el.classList.add('hidden');
+                icon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />`;
+            }
+        }
+        function toggleFile(fileId, checkbox) {
+            const container = document.getElementById(fileId);
+            if(container) {
+                const childCheckboxes = container.querySelectorAll('.perm-checkbox, .sheet-checkbox');
+                childCheckboxes.forEach(cb => cb.checked = checkbox.checked);
+                if (checkbox.checked && container.classList.contains('hidden')) { toggleAccordion(fileId); }
+            }
+        }
+        function toggleSheet(sheetId, checkbox) {
+            const container = document.getElementById(sheetId);
+            if(container) {
+                const childCheckboxes = container.querySelectorAll('.perm-checkbox');
+                childCheckboxes.forEach(cb => cb.checked = checkbox.checked);
+                if (checkbox.checked && container.classList.contains('hidden')) { toggleAccordion(sheetId); }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans min-h-screen">
+
+    <nav class="bg-white shadow-sm border-b">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between h-16 items-center">
+            <div class="font-bold text-xl text-blue-600">Quản trị Hệ thống</div>
+            <a href="{{ url_for('manage_users') }}" class="text-gray-600 hover:text-blue-600 font-medium">Hủy & Quay lại</a>
+        </div>
+    </nav>
+
+    <div class="max-w-5xl mx-auto mt-10 px-4 pb-20">
+        <h2 class="text-2xl font-bold mb-4 border-b pb-2 text-red-600">Cấu hình HÀNG LOẠT cho {{ users|length }} tài khoản</h2>
+        
+        <div class="bg-red-50 p-4 border border-red-200 rounded-lg mb-6">
+            <p class="text-sm font-bold text-red-700">⚠️ CẢNH BÁO BẢO MẬT:</p>
+            <p class="text-sm text-red-600">Những thiết lập bên dưới sẽ <strong>GHI ĐÈ</strong> (xóa bỏ cái cũ, áp dụng cái mới) lên cấu hình của tất cả các tài khoản sau:</p>
+            <div class="mt-2 flex flex-wrap gap-2">
+                {% for u in users %}
+                    <span class="px-2.5 py-1 bg-white border border-red-300 text-red-700 text-xs font-bold rounded shadow-sm">@{{ u.username }}</span>
+                {% endfor %}
+            </div>
+        </div>
+
+        <form id="configForm" method="POST" action="{{ url_for('save_bulk_edit') }}" class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 space-y-8">
+            
+            <!-- Truyền ngầm danh sách ID người dùng để server biết cần lưu cho ai -->
+            {% for u in users %}
+                <input type="hidden" name="user_ids" value="{{ u.id }}">
+            {% endfor %}
+            
+            <!-- Block 1: Trạng thái & Mật khẩu -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label class="block text-sm font-bold text-gray-700 mb-2">Trạng thái tài khoản (Đồng bộ)</label>
+                    <label class="inline-flex items-center cursor-pointer mt-2">
+                        <input type="checkbox" name="is_active" checked class="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
+                        <span class="ml-2 text-gray-700 font-medium">Mở khóa tất cả các tài khoản này</span>
+                    </label>
+                </div>
+                <div>
+                    <label class="block text-sm font-bold text-gray-700 mb-2">Đổi mật khẩu chung (Bỏ trống nếu giữ nguyên mật khẩu cũ của từng người)</label>
+                    <input type="text" name="password" placeholder="Nhập mật khẩu mới cho TẤT CẢ..." class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+            </div>
+
+            <hr>
+
+            <!-- Block 2: Giới hạn IP -->
+            <div>
+                <label class="block text-sm font-bold text-gray-700 mb-2">Giới hạn truy cập theo Dải IP chung</label>
+                <input type="text" name="allowed_ips" placeholder="Ví dụ: 192.168.1., 10.0.0. (cách nhau bởi dấu phẩy)" 
+                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+            </div>
+
+            <hr>
+
+            <!-- Block 3: Phân quyền Cột -->
+            <div>
+                <label class="block text-sm font-bold text-gray-700 mb-2">Cấu hình Quyền xem Dữ liệu chung (Ghi đè)</label>
+                
+                <div class="flex items-center space-x-6 mb-4 mt-4">
+                    <label class="flex items-center cursor-pointer">
+                        <input type="radio" name="enable_permissions" value="no" checked
+                               class="w-4 h-4 text-blue-600 focus:ring-blue-500" onchange="togglePermTree()">
+                        <span class="ml-2 font-medium text-gray-700">Tất cả đều xem được TOÀN BỘ</span>
+                    </label>
+                    <label class="flex items-center cursor-pointer">
+                        <input type="radio" name="enable_permissions" value="yes" 
+                               class="w-4 h-4 text-blue-600 focus:ring-blue-500" onchange="togglePermTree()">
+                        <span class="ml-2 font-medium text-gray-700">Tất cả bị giới hạn theo phân quyền dưới đây</span>
+                    </label>
+                </div>
+
+                <div id="permission_tree" class="hidden bg-gray-50 p-4 border border-gray-200 rounded-lg max-h-[700px] overflow-y-auto">
+                    
+                    {% if file_metadata %}
+                        <div class="flex items-center space-x-2 mb-4 bg-blue-50 p-3 rounded border border-blue-200 shadow-sm">
+                            <input type="checkbox" id="sync_columns_toggle" checked class="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer">
+                            <label for="sync_columns_toggle" class="text-sm font-bold text-blue-800 cursor-pointer select-none">
+                                🔄 Đồng bộ chọn cột trùng tên (Áp dụng cho tất cả Sheet/File)
+                            </label>
+                        </div>
+
+                        {% for file, sheets in file_metadata.items() %}
+                        {% set safe_file_id = file | replace('.', '_') | replace(' ', '_') %}
+                        <div class="mb-4 bg-white border border-gray-200 rounded-lg shadow-sm">
+                            <div class="flex items-center justify-between bg-gray-200 px-4 py-3 rounded-t-lg">
+                                <div class="flex items-center space-x-3 w-full">
+                                    <input type="checkbox" class="w-5 h-5 text-blue-600 rounded border-gray-400 focus:ring-blue-500 cursor-pointer file-checkbox" 
+                                           onchange="toggleFile('file-container-{{ loop.index }}', this)">
+                                    <button type="button" onclick="toggleAccordion('file-container-{{ loop.index }}')" class="flex items-center text-gray-800 font-bold hover:text-blue-600 w-full text-left outline-none">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2 text-gray-500" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clip-rule="evenodd" />
+                                        </svg>
+                                        {{ file }}
+                                        <svg id="icon-file-container-{{ loop.index }}" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div id="file-container-{{ loop.index }}" class="hidden p-4 space-y-4">
+                                {% for sheet, columns in sheets.items() %}
+                                {% set safe_sheet_id = safe_file_id ~ '_' ~ loop.index %}
+                                <div class="border border-blue-100 rounded bg-blue-50/30">
+                                    <div class="flex items-center bg-blue-100/50 px-3 py-2 rounded-t">
+                                        <input type="checkbox" class="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer mr-2 sheet-checkbox" 
+                                               onchange="toggleSheet('sheet-container-{{ safe_sheet_id }}', this)">
+                                        <button type="button" onclick="toggleAccordion('sheet-container-{{ safe_sheet_id }}')" class="flex items-center text-blue-800 font-semibold text-sm hover:text-blue-600 w-full text-left outline-none">
+                                            Sheet: {{ sheet }}
+                                            <svg id="icon-sheet-container-{{ safe_sheet_id }}" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+                                        </button>
+                                    </div>
+                                    <div id="sheet-container-{{ safe_sheet_id }}" class="hidden p-3 bg-white rounded-b">
+                                        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                                            {% for col in columns %}
+                                                <label class="flex items-center space-x-2 text-sm text-gray-700 hover:bg-blue-50 p-1.5 rounded transition cursor-pointer border border-transparent hover:border-blue-100">
+                                                    <input type="checkbox" class="perm-checkbox w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                                                           data-file="{{ file }}" data-sheet="{{ sheet }}" value="{{ col }}">
+                                                    <span class="truncate font-medium text-xs" title="{{ col }}">{{ col }}</span>
+                                                </label>
+                                            {% endfor %}
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% endif %}
+                </div>
+                
+                <input type="hidden" name="column_permissions" id="column_permissions_input">
+            </div>
+
+            <div class="flex justify-end pt-4">
+                <button type="submit" class="px-8 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg shadow-md transition">
+                    Ghi Đè Cấu Hình
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        function togglePermTree() {
+            const isEnabled = document.querySelector('input[name="enable_permissions"]:checked').value === 'yes';
+            const tree = document.getElementById('permission_tree');
+            if (isEnabled) {
+                tree.classList.remove('hidden');
+            } else {
+                tree.classList.add('hidden');
+            }
+        }
+
+        document.querySelectorAll('.perm-checkbox').forEach(checkbox => {
+            checkbox.addEventListener('change', function() {
+                const isSyncEnabled = document.getElementById('sync_columns_toggle').checked;
+                if (isSyncEnabled) {
+                    const targetColumnName = this.value.trim().toLowerCase();
+                    const isChecked = this.checked;
+                    document.querySelectorAll('.perm-checkbox').forEach(cb => {
+                        if (cb.value.trim().toLowerCase() === targetColumnName) {
+                            cb.checked = isChecked;
+                        }
+                    });
+                }
+            });
+        });
+
+        document.getElementById('configForm').addEventListener('submit', function(e) {
+            const isEnabled = document.querySelector('input[name="enable_permissions"]:checked').value === 'yes';
+            const hiddenInput = document.getElementById('column_permissions_input');
+
+            if (isEnabled) {
+                const checkboxes = document.querySelectorAll('.perm-checkbox:checked');
+                const perms = {};
+                checkboxes.forEach(cb => {
+                    const file = cb.getAttribute('data-file');
+                    const sheet = cb.getAttribute('data-sheet');
+                    const col = cb.value;
+                    if (!perms[file]) perms[file] = {};
+                    if (!perms[file][sheet]) perms[file][sheet] = [];
+                    perms[file][sheet].push(col);
+                });
+                hiddenInput.value = JSON.stringify(perms);
+            } else {
+                hiddenInput.value = "";
+            }
+        });
+    </script>
+</body>
+</html>

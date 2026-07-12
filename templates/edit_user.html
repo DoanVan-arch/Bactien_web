@@ -242,18 +242,26 @@
         // LOGIC KHỞI TẠO CHỨC NĂNG ĐỒNG BỘ CỘT TRÙNG TÊN 
         // (XÓA SẠCH KHOẢNG TRẮNG ĐẦU/CUỐI VÀ BỎ QUA HOA/THƯỜNG)
         // ==============================================================
+       // ==============================================================
+        // LOGIC KHỞI TẠO CHỨC NĂNG ĐỒNG BỘ CỘT TRÙNG TÊN 
+        // (XÓA KHOẢNG TRẮNG, KÝ TỰ XUỐNG DÒNG VÀ BỎ QUA HOA/THƯỜNG)
+        // ==============================================================
         document.querySelectorAll('.perm-checkbox').forEach(checkbox => {
             checkbox.addEventListener('change', function() {
                 const isSyncEnabled = document.getElementById('sync_columns_toggle').checked;
                 
                 if (isSyncEnabled) {
-                    // Xóa khoảng trắng ở ĐẦU và CUỐI, sau đó chuyển về chữ thường
-                    const targetColumnName = this.value.replace(/^\s+|\s+$/g, '').toLowerCase(); 
+                    
+                    // Hàm dọn dẹp: Xóa khoảng trắng, dấu tab, và mọi dấu xuống dòng (\r, \n) ở đầu và cuối chuỗi
+                    function cleanString(text) {
+                        return text.replace(/^[\s\r\n]+|[\s\r\n]+$/g, '').toLowerCase();
+                    }
+
+                    const targetColumnName = cleanString(this.value); 
                     const isChecked = this.checked;
                     
                     document.querySelectorAll('.perm-checkbox').forEach(cb => {
-                        // Xóa khoảng trắng ở ĐẦU và CUỐI của các cột khác để so sánh
-                        const currentColumnName = cb.value.replace(/^\s+|\s+$/g, '').toLowerCase();
+                        const currentColumnName = cleanString(cb.value);
                         
                         if (currentColumnName === targetColumnName) {
                             cb.checked = isChecked;
@@ -262,7 +270,6 @@
                 }
             });
         });
-
         // Xử lý đóng gói JSON để nộp Form
         document.getElementById('configForm').addEventListener('submit', function(e) {
             const isEnabled = document.querySelector('input[name="enable_permissions"]:checked').value === 'yes';

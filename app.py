@@ -85,7 +85,7 @@ def login():
 
         if user and check_password_hash(user.password, password):
             if not user.is_active:
-                flash('Tài khoản của đồng chí hiện đang bị khóa.')
+                flash('Tài khoản của bạn hiện đang bị khóa.')
                 return render_template('login.html', client_ip=client_ip)
             
             if user.allowed_ips and user.role != 'admin':
@@ -163,7 +163,7 @@ def delete_user(user_id):
     if user.username == 'admin':
         flash('Không thể xóa tài khoản Admin gốc (root).')
     elif user.id == current_user.id:
-        flash('Đồng chí không thể tự xóa chính tài khoản của mình.')
+        flash('Bạn không thể tự xóa chính tài khoản của mình.')
     else:
         db.session.delete(user)
         db.session.commit()

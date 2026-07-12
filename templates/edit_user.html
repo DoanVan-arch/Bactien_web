@@ -238,21 +238,24 @@
             }
         }
 
-        // ==============================================================
-        // LOGIC KHỞI TẠO CHỨC NĂNG ĐỒNG BỘ CỘT TRÙNG TÊN (BỎ QUA HOA/THƯỜNG)
+       // ==============================================================
+        // LOGIC KHỞI TẠO CHỨC NĂNG ĐỒNG BỘ CỘT TRÙNG TÊN 
+        // (XÓA SẠCH KHOẢNG TRẮNG ĐẦU/CUỐI VÀ BỎ QUA HOA/THƯỜNG)
         // ==============================================================
         document.querySelectorAll('.perm-checkbox').forEach(checkbox => {
             checkbox.addEventListener('change', function() {
                 const isSyncEnabled = document.getElementById('sync_columns_toggle').checked;
                 
                 if (isSyncEnabled) {
-                    // Chuyển tên cột gốc về chữ thường và xóa khoảng trắng thừa
-                    const targetColumnName = this.value.trim().toLowerCase(); 
+                    // Xóa khoảng trắng ở ĐẦU và CUỐI, sau đó chuyển về chữ thường
+                    const targetColumnName = this.value.replace(/^\s+|\s+$/g, '').toLowerCase(); 
                     const isChecked = this.checked;
                     
                     document.querySelectorAll('.perm-checkbox').forEach(cb => {
-                        // Chuyển tên các cột khác về chữ thường để so sánh
-                        if (cb.value.trim().toLowerCase() === targetColumnName) {
+                        // Xóa khoảng trắng ở ĐẦU và CUỐI của các cột khác để so sánh
+                        const currentColumnName = cb.value.replace(/^\s+|\s+$/g, '').toLowerCase();
+                        
+                        if (currentColumnName === targetColumnName) {
                             cb.checked = isChecked;
                         }
                     });

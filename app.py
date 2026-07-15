@@ -274,6 +274,52 @@ def upload_file():
             except Exception as e: flash(f'Lỗi khi xử lý file: {str(e)}')
     return render_template('upload.html')
 
+# ==============================================================
+# ROUTE MỚI: QUẢN LÝ VÀ XÓA FILE (DÀNH CHO ADMIN)
+# ==============================================================
+@app.route('/manage_files', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def manage_files():
+    if request.method == 'POST':
+        files_to_delete = request.form.getlist('file_names')
+        if not files_to_delete:
+            flash('Vui lòng chọn ít nhất một file để xóa.')
+            return redirect(url_for('manage_files'))
+        
+        deleted_count = 0
+        for filename in files_to_delete:
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            if os.path.exists(filepath):
+                try:
+                    # Xóa file vật lý khỏi ổ cứng
+                    os.remove(filepath)
+                    # Xóa file khỏi bộ nhớ đệm RAM
+                    if filename in DATA_CACHE:
+                        del DATA_CACHE[filename]
+                    deleted_count += 1
+                except Exception as e:
+                    flash(f'Lỗi khi xóa file {filename}: {str(e)}')
+        
+        if deleted_count > 0:
+            flash(f'Đã xóa vĩnh viễn {deleted_count} file dữ liệu.')
+        return redirect(url_for('manage_files'))
+        
+    # Lấy danh sách thông tin file trong ổ cứng
+    files = []
+    if os.path.exists(app.config['UPLOAD_FOLDER']):
+        for f in os.listdir(app.config['UPLOAD_FOLDER']):
+            if f.endswith(('.xlsx', '.xls')):
+                filepath = os.path.join(app.config['UPLOAD_FOLDER'], f)
+                size_mb = os.path.getsize(filepath) / (1024 * 1024)
+                files.append({'name': f, 'size': round(size_mb, 2)})
+                
+    return render_template('manage_files.html', files=files)
+
+
+# ==============================================================
+# LOGIC TÌM KIẾM ĐÃ CẬP NHẬT
+# ==============================================================
 @app.route('/', methods=['GET', 'POST'])
 @app.route('/search', methods=['GET', 'POST'])
 @login_required
@@ -283,25 +329,45 @@ def search():
     query = ""
     selected_file = ""
     display_only_data = {}
-    user_perms = json.loads(current_user.column_permissions) if current_user.role != 'admin' and current_user.column_permissions else None
+    
+    user_perms = None
+    if current_user.role != 'admin' and current_user.column_permissions:
+        try:
+            user_perms = json.loads(current_user.column_permissions)
+        except:
+            user_perms = {} 
+
     if request.method == 'POST':
         query = request.form.get('query', '').strip()
         selected_file = request.form.get('file', '') if current_user.role == 'admin' else ''
+
         if query:
+            # Nếu Admin chọn đích danh 1 file, chỉ quét file đó.
+            # Nếu Admin để trống, hoặc là tài khoản Người dùng thường -> Quét toàn bộ DATA_CACHE
             files_to_scan = [selected_file] if selected_file and selected_file in DATA_CACHE else list(DATA_CACHE.keys())
+            
             try:
                 for file_name in files_to_scan:
                     xls_data = DATA_CACHE.get(file_name, {})
+                    
                     for sheet_name, df in xls_data.items():
                         allowed_cols = df.columns.tolist()
+                        
+                        # KIỂM TRA PHÂN QUYỀN
                         if user_perms is not None:
-                            if file_name not in user_perms or sheet_name not in user_perms[file_name]: continue
+                            # Nếu có phân quyền nhưng file/sheet này không nằm trong danh sách cho phép -> Bỏ qua
+                            if file_name not in user_perms or sheet_name not in user_perms[file_name]: 
+                                continue
                             allowed_cols = [c for c in user_perms[file_name][sheet_name] if c in df.columns]
-                            if not allowed_cols: continue
+                            if not allowed_cols: 
+                                continue
+
+                        # NẾU USER CÓ QUYỀN "XEM TOÀN BỘ" (user_perms is None) -> Code sẽ chảy thẳng xuống đây và quét sạch
                         if re.search(r'\d{4}\s*-\s*\d{4}', str(sheet_name)):
                             row_strings = df.astype(str).apply(lambda x: ' '.join(x), axis=1).str.lower()
                             or_groups = query.lower().split('|')
                             final_mask = pd.Series(False, index=df.index)
+                            
                             for group in or_groups:
                                 if not group.strip(): continue
                                 and_tokens = group.split('*')
@@ -310,6 +376,7 @@ def search():
                                     token = token.strip()
                                     if token: group_mask = group_mask & row_strings.str.contains(token, regex=False)
                                 final_mask = final_mask | group_mask
+                            
                             matches = df[final_mask]
                             if not matches.empty:
                                 matches = matches[allowed_cols]
@@ -321,8 +388,8 @@ def search():
                                 if sheet_name in display_only_data: display_only_data[sheet_name].extend(df_filtered.to_dict('records'))
                                 else: display_only_data[sheet_name] = df_filtered.to_dict('records')
             except Exception as e: flash(f'Lỗi dữ liệu: {str(e)}')
+            
     return render_template('search.html', files=files, results=results, query=query, selected_file=selected_file, display_only_data=display_only_data)
-
 with app.app_context():
     db.create_all()
     create_admin()

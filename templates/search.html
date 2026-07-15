@@ -20,6 +20,7 @@
                 <div class="space-x-4">
                     {% if current_user.role == 'admin' %}
                         <a href="{{ url_for('upload_file') }}" class="text-gray-600 hover:text-blue-600 font-medium transition">Upload file</a>
+                        <a href="{{ url_for('manage_files') }}" class="text-gray-600 hover:text-blue-600 font-medium transition">Quản lý File</a>
                         <a href="{{ url_for('manage_users') }}" class="text-gray-600 hover:text-blue-600 font-medium transition">Quản lý User</a>
                     {% endif %}
                     <a href="{{ url_for('logout') }}" class="text-red-500 hover:text-red-700 font-medium transition">Đăng xuất</a>

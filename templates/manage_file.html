@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quản lý File Dữ liệu | Hệ thống tra cứu</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans min-h-screen">
+
+    <nav class="bg-white shadow-sm border-b">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <div class="font-bold text-xl text-blue-600">Hệ Thống Tra Cứu (Admin)</div>
+                <div class="space-x-4">
+                    <a href="{{ url_for('search') }}" class="text-gray-600 hover:text-blue-600 font-medium transition">Tìm kiếm</a>
+                    <a href="{{ url_for('manage_users') }}" class="text-gray-600 hover:text-blue-600 font-medium transition">Quản lý User</a>
+                    <a href="{{ url_for('upload_file') }}" class="text-blue-600 font-bold hover:text-blue-800 transition">Upload File</a>
+                    <a href="{{ url_for('logout') }}" class="text-red-500 hover:text-red-700 font-medium transition">Đăng xuất</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-4xl mx-auto mt-10 px-4">
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                <div class="bg-blue-50 border-l-4 border-blue-400 text-blue-700 p-4 mb-6 rounded shadow-sm">
+                {% for message in messages %}
+                    <p class="text-sm font-bold">{{ message }}</p>
+                {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-10">
+            <form method="POST" action="{{ url_for('manage_files') }}" id="bulkFileForm">
+                
+                <!-- HEADER KHỐI QUẢN LÝ -->
+                <div class="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                    <div>
+                        <h3 class="font-bold text-gray-800 text-lg">Kho Dữ Liệu Máy Chủ</h3>
+                        <p class="text-xs text-gray-500 mt-1">Danh sách các file Excel đã tải lên và đang nạp trên RAM</p>
+                    </div>
+                    
+                    <button type="submit" onclick="return confirm('CẢNH BÁO NGUY HIỂM: \nBạn có chắc chắn muốn xóa VĨNH VIỄN các file này khỏi ổ cứng máy chủ không?\n(Dữ liệu sẽ không thể khôi phục!)')" 
+                            class="px-5 py-2 text-sm bg-red-600 text-white hover:bg-red-700 font-bold rounded-lg shadow transition">
+                        Xóa File Đã Chọn
+                    </button>
+                </div>
+                
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-white">
+                            <tr>
+                                <th class="px-6 py-4 text-left w-10">
+                                    <input type="checkbox" id="selectAllFiles" class="w-5 h-5 text-blue-600 rounded border-gray-400 focus:ring-blue-500 cursor-pointer">
+                                </th>
+                                <th class="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Tên File (Cơ sở dữ liệu)</th>
+                                <th class="px-6 py-4 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Dung lượng</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200">
+                            {% if files %}
+                                {% for file in files %}
+                                <tr class="hover:bg-red-50 transition-colors">
+                                    <td class="px-6 py-4">
+                                        <input type="checkbox" name="file_names" value="{{ file.name }}" class="file-checkbox w-5 h-5 text-red-600 rounded border-gray-400 focus:ring-red-500 cursor-pointer">
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-800 flex items-center">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-3 text-green-600" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clip-rule="evenodd" />
+                                        </svg>
+                                        {{ file.name }}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-500">
+                                        {{ file.size }} MB
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="3" class="px-6 py-8 text-center text-sm font-medium text-gray-400 italic">
+                                        Chưa có file dữ liệu nào được tải lên hệ thống.
+                                    </td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Script xử lý nút Chọn tất cả -->
+    <script>
+        document.getElementById('selectAllFiles').addEventListener('change', function() {
+            const checkboxes = document.querySelectorAll('.file-checkbox');
+            checkboxes.forEach(cb => {
+                cb.checked = this.checked;
+            });
+        });
+    </script>
+</body>
+</html>
